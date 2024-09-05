@@ -187,6 +187,8 @@ pub struct Swap<'info> {
     pub pool_token_in: Account<'info, TokenAccount>,
     #[account(mut)]
     pub pool_token_out: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub admin_token_account: Account<'info, TokenAccount>,
     #[account(signer)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
@@ -200,7 +202,8 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
     require!(min_amount_out > 0, SwapError::InvalidAmount);
 
     // Calculate the output amount based on the pool’s reserves and input amount
-    let output_amount = calculate_swap_amount(amount_in, pool.token_a_amount, pool.token_b_amount)?;
+    let (output_amount, fee_amount) =
+        calculate_swap_amount(amount_in, pool.token_a_amount, pool.token_b_amount)?;
 
     // Ensure that the calculated output amount meets the minimum amount out requirement
     require!(output_amount >= min_amount_out, SwapError::SlippageError);
@@ -215,6 +218,18 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
         SwapError::InsufficientLiquidity
     );
 
+    // Transfer the fee to the admin account
+    let cpi_accounts_fee = token::Transfer {
+        from: ctx.accounts.user_token_in.to_account_info(),
+        to: ctx.accounts.admin_token_account.to_account_info(),
+        authority: ctx.accounts.user.to_account_info(),
+    };
+    let cpi_ctx_fee = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        cpi_accounts_fee,
+    );
+    token::transfer(cpi_ctx_fee, fee_amount)?;
+
     // Transfer tokens from user to pool
     let cpi_accounts_in = token::Transfer {
         from: ctx.accounts.user_token_in.to_account_info(),
@@ -225,7 +240,7 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
         ctx.accounts.token_program.to_account_info(),
         cpi_accounts_in,
     );
-    token::transfer(cpi_ctx_in, amount_in)?;
+    token::transfer(cpi_ctx_in, amount_in - fee_amount)?;
 
     // Transfer tokens from pool to user (pool_authority must authorize this)
     let cpi_accounts_out = token::Transfer {
@@ -243,6 +258,8 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
     pool.token_a_amount = pool
         .token_a_amount
         .checked_add(amount_in)
+        .ok_or(SwapError::MathError)?
+        .checked_sub(fee_amount)
         .ok_or(SwapError::MathError)?;
     pool.token_b_amount = pool
         .token_b_amount

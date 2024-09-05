@@ -467,15 +467,18 @@ describe("solana_swap_swap_tokens", () => {
 
   // accounts
   let pool: Keypair;
+  let admin: Keypair;
   let tokenMintA: PublicKey;
   let tokenMintB: PublicKey;
   let userTokenAccountA: PublicKey;
   let userTokenAccountB: PublicKey;
   let poolTokenAccountA: PublicKey;
   let poolTokenAccountB: PublicKey;
+  let adminTokenAccount: PublicKey;
 
   before(async () => {
     pool = Keypair.generate();
+    admin = Keypair.generate();
 
     // Airdrop SOL to the payer account
     const airdropSignature = await connection.requestAirdrop(
@@ -541,6 +544,15 @@ describe("solana_swap_swap_tokens", () => {
         payer,
         tokenMintB,
         pool.publicKey
+      )
+    ).address;
+
+    adminTokenAccount = (
+      await getOrCreateAssociatedTokenAccount(
+        connection,
+        payer,
+        tokenMintA,
+        admin.publicKey
       )
     ).address;
 
@@ -615,6 +627,9 @@ describe("solana_swap_swap_tokens", () => {
     const poolTokenAccountDataB = await connection.getTokenAccountBalance(
       poolTokenAccountB
     );
+    const adminTokenAccountData = await connection.getTokenAccountBalance(
+      adminTokenAccount
+    );
 
     console.log(
       "Before SWAP User Token Account A Data:",
@@ -632,11 +647,12 @@ describe("solana_swap_swap_tokens", () => {
       "Before SWAP Pool Token Account B Data:",
       poolTokenAccountDataB
     );
+    console.log("Before SWAP Admin Token Account Data:", adminTokenAccountData);
   });
 
   it("Swap tokens in the pool", async () => {
     const swapAmountIn = 50; // Amount of Token A to swap
-    const minAmountOut = 455; // Minimum amount of Token B to receive
+    const minAmountOut = 454; // Minimum amount of Token B to receive
 
     // Perform the swap
     const tx = await program.methods
@@ -648,6 +664,7 @@ describe("solana_swap_swap_tokens", () => {
         userTokenOut: userTokenAccountB,
         poolTokenIn: poolTokenAccountA,
         poolTokenOut: poolTokenAccountB,
+        adminTokenAccount: adminTokenAccount,
         user: payer.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
@@ -675,16 +692,21 @@ describe("solana_swap_swap_tokens", () => {
     const poolTokenAccountDataB = await connection.getTokenAccountBalance(
       poolTokenAccountB
     );
+    const adminTokenAccountData = await connection.getTokenAccountBalance(
+      adminTokenAccount
+    );
 
     console.log("User Token Account A Data:", userTokenAccountDataA);
     console.log("User Token Account B Data:", userTokenAccountDataB);
     console.log("Pool Token Account A Data:", poolTokenAccountDataA);
     console.log("Pool Token Account B Data:", poolTokenAccountDataB);
+    console.log("Admin Token Account Data:", adminTokenAccountData);
 
     const expectedUserTokenAAfterSwap = (1000 - 500 - swapAmountIn).toString();
     const expectedUserTokenBAfterSwap = (1000 - 500 + minAmountOut).toString();
     const expectedPoolTokenAAfterSwap = (500 + swapAmountIn).toString();
     const expectedPoolTokenBAfterSwap = (500 - minAmountOut).toString();
+    const expectedAdminAccountAfterSwap = (0).toString();
 
     expect(userTokenAccountDataA.value.amount).to.equal(
       expectedUserTokenAAfterSwap,
@@ -701,6 +723,10 @@ describe("solana_swap_swap_tokens", () => {
     expect(poolTokenAccountDataB.value.amount).to.equal(
       expectedPoolTokenBAfterSwap,
       "Pool Token Account B balance after swap is incorrect"
+    );
+    expect(adminTokenAccountData.value.amount).to.equal(
+      expectedAdminAccountAfterSwap,
+      "Admin Token Account balance after swap is incorrect"
     );
   });
 });
