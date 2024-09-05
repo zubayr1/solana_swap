@@ -636,13 +636,14 @@ describe("solana_swap_swap_tokens", () => {
 
   it("Swap tokens in the pool", async () => {
     const swapAmountIn = 50; // Amount of Token A to swap
-    const minAmountOut = 25; // Minimum amount of Token B to receive
+    const minAmountOut = 455; // Minimum amount of Token B to receive
 
     // Perform the swap
     const tx = await program.methods
       .swap(new anchor.BN(swapAmountIn), new anchor.BN(minAmountOut))
       .accounts({
         pool: pool.publicKey,
+        poolAuthority: pool.publicKey,
         userTokenIn: userTokenAccountA,
         userTokenOut: userTokenAccountB,
         poolTokenIn: poolTokenAccountA,

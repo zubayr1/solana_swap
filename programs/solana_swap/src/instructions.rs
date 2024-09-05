@@ -177,6 +177,8 @@ pub fn remove_liquidity(ctx: Context<RemoveLiquidity>, amount_a: u64, amount_b: 
 pub struct Swap<'info> {
     #[account(mut)]
     pub pool: Account<'info, Pool>,
+    #[account(signer)]
+    pub pool_authority: Signer<'info>,
     #[account(mut)]
     pub user_token_in: Account<'info, TokenAccount>,
     #[account(mut)]
@@ -185,12 +187,13 @@ pub struct Swap<'info> {
     pub pool_token_in: Account<'info, TokenAccount>,
     #[account(mut)]
     pub pool_token_out: Account<'info, TokenAccount>,
+    #[account(signer)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<()> {
-    let pool = &mut ctx.accounts.pool.clone();
+    let pool = &mut ctx.accounts.pool; // No need to clone, use pool directly
 
     // Validate input amounts
     require!(amount_in > 0, SwapError::InvalidAmount);
@@ -224,11 +227,11 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
     );
     token::transfer(cpi_ctx_in, amount_in)?;
 
-    // Transfer tokens from pool to user
+    // Transfer tokens from pool to user (pool_authority must authorize this)
     let cpi_accounts_out = token::Transfer {
         from: ctx.accounts.pool_token_out.to_account_info(),
         to: ctx.accounts.user_token_out.to_account_info(),
-        authority: ctx.accounts.pool.to_account_info(), // Pool must be the authority for this transfer
+        authority: ctx.accounts.pool_authority.to_account_info(), // Pool authority must authorize this transfer
     };
     let cpi_ctx_out = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),

@@ -22,8 +22,6 @@ pub fn calculate_swap_amount(
         .ok_or(SwapError::MathError)?
         .checked_div(new_input_reserve)
         .ok_or(SwapError::MathError)?;
-    // .checked_sub(output_reserve)
-    // .ok_or(SwapError::MathError)?;
 
     Ok(output_amount)
 }
