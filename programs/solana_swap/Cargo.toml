@@ -7,7 +7,7 @@ author = "zkhalid"
 homepage = "https://github.com/zubayr1/solana_swap"
 keywords = ["solana", "swap", "liquidity pool"]
 categories = ["Solana Swap"]
-License = "MIT"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "lib"]
