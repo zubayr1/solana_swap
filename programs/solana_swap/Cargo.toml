@@ -7,7 +7,7 @@ author = "zkhalid"
 homepage = "https://github.com/zubayr1/solana_swap"
 repository = "https://github.com/zubayr1/solana_swap"
 keywords = ["solana", "swap", "liquidity_pool"]
-categories = ["Solana Swap"]
+categories = ["blockchain", "cryptocurrency", "smart-contracts"]
 license = "MIT"
 
 [lib]
