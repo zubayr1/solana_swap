@@ -32,12 +32,13 @@ DEPLOYMENT:
 ```rust
 anchor build
 anchor deploy
+```
 
 3. Verify deployment:
 
 ```rust
 solana program show <ProgramID>
-
+```
 
 USAGES:
 -------------
