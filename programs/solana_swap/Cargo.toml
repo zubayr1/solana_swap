@@ -6,7 +6,7 @@ edition = "2021"
 author = "zkhalid"
 homepage = "https://github.com/zubayr1/solana_swap"
 repository = "https://github.com/zubayr1/solana_swap"
-keywords = ["solana", "swap", "liquidity pool"]
+keywords = ["solana", "swap", "liquidity_pool"]
 categories = ["Solana Swap"]
 license = "MIT"
 
