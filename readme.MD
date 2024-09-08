@@ -29,11 +29,13 @@ DEPLOYMENT:
 1. Update Anchor.toml with correct Program ID and cluster.
 2. Deploy the program to Devnet:
 
+```rust
 anchor build
 anchor deploy
 
 3. Verify deployment:
 
+```rust
 solana program show <ProgramID>
 
 
