@@ -7,7 +7,7 @@ pub mod errors;
 pub mod instructions;
 pub mod state;
 
-declare_id!("EkXczcYja...dLTKYNaLTzCM7");
+declare_id!("EkXczcYjaVcmNEUeoKAvK8aNYvSfkAAdLTKYNaLTzCM7");
 
 #[program]
 pub mod solana_swap {
