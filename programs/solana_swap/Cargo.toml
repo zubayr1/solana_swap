@@ -1,6 +1,6 @@
 [package]
 name = "solana_swap"
-version = "0.1.0"
+version = "1.0.0"
 description = "Created with Anchor"
 edition = "2021"
 author = "zkhalid"
@@ -9,6 +9,7 @@ repository = "https://github.com/zubayr1/solana_swap"
 keywords = ["solana", "swap", "liquidity_pool"]
 categories = ["finance", "cryptography"]
 license = "MIT"
+readme = "readme.MD"
 
 [lib]
 crate-type = ["cdylib", "lib"]
