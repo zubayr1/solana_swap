@@ -69,7 +69,7 @@ describe("solana_swap_deposit", () => {
   let tokenMintA: PublicKey;
   let tokenMintB: PublicKey;
 
-  const connection = new Connection("http://localhost:8899", "confirmed");
+  const connection = new Connection("http://127.0.0.1:8899", "confirmed");
 
   before(async () => {
     // Airdrop SOL to the payer account
@@ -168,28 +168,42 @@ describe("solana_swap_deposit", () => {
         pool: pool.publicKey,
         payer: provider.wallet.publicKey,
       })
-      .signers([pool])
+      .signers([pool]) // Sign with the pool account's keypair
       .rpc();
 
     // Deposit amounts
     const depositAmountA = 100;
     const depositAmountB = 200;
 
-    // Call the deposit function
-    const tx = await program.methods
-      .deposit(new anchor.BN(depositAmountA), new anchor.BN(depositAmountB))
+    // Call the deposit function for token A
+    const txA = await program.methods
+      .deposit(userTokenAccountA, new anchor.BN(depositAmountA))
       .accounts({
         pool: pool.publicKey,
-        userTokenA: userTokenAccountA,
-        userTokenB: userTokenAccountB,
-        poolTokenA: poolTokenAccountA,
-        poolTokenB: poolTokenAccountB,
+        userToken: userTokenAccountA,
+        poolToken: poolTokenAccountA,
         user: payer.publicKey,
+        token_program: TOKEN_PROGRAM_ID,
       })
       .signers([payer])
       .rpc();
 
-    console.log("Deposit transaction signature:", tx);
+    console.log("Deposit transaction signature for token A:", txA);
+
+    // Call the deposit function for token B
+    const txB = await program.methods
+      .deposit(userTokenAccountB, new anchor.BN(depositAmountB))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountB,
+        poolToken: poolTokenAccountB,
+        user: payer.publicKey,
+        token_program: TOKEN_PROGRAM_ID,
+      })
+      .signers([payer])
+      .rpc();
+
+    console.log("Deposit transaction signature for token B:", txB);
 
     // Fetch the pool account data to verify the deposit
     const poolAccount = await program.account.pool.fetch(pool.publicKey);
@@ -209,9 +223,20 @@ describe("solana_swap_deposit", () => {
       poolTokenAccountB
     );
 
+    const tokenAmountA = poolAccount.tokens.find(
+      (token) => token.tokenAccount.toString() === userTokenAccountA.toString()
+    )?.amount;
+
+    const tokenAmountB = poolAccount.tokens.find(
+      (token) => token.tokenAccount.toString() === userTokenAccountB.toString()
+    )?.amount;
+
     // Add assertions
-    expect(poolAccount.tokenAAmount.toNumber()).to.equal(depositAmountA);
-    expect(poolAccount.tokenBAmount.toNumber()).to.equal(depositAmountB);
+    expect(tokenAmountA?.toNumber()).to.equal(depositAmountA);
+    expect(tokenAmountB?.toNumber()).to.equal(depositAmountB);
+
+    expect(Number(poolTokenAccountDataA.value.amount)).to.equal(depositAmountA);
+    expect(Number(poolTokenAccountDataB.value.amount)).to.equal(depositAmountB);
 
     // Check token account balances
     expect(Number(userTokenAccountDataA.value.amount)).to.equal(
@@ -220,8 +245,6 @@ describe("solana_swap_deposit", () => {
     expect(Number(userTokenAccountDataB.value.amount)).to.equal(
       1000 - depositAmountB
     );
-    expect(Number(poolTokenAccountDataA.value.amount)).to.equal(depositAmountA);
-    expect(Number(poolTokenAccountDataB.value.amount)).to.equal(depositAmountB);
   });
 });
 
@@ -339,118 +362,195 @@ describe("solana_swap_liquidity_operations", () => {
   });
 
   it("Add & Remove liquidity from the pool", async () => {
-    const initialDepositA = 500;
-    const initialDepositB = 300;
-
-    // First, deposit some liquidity to have initial values
-    const txinit = await program.methods
-      .addLiquidity(
-        new anchor.BN(initialDepositA),
-        new anchor.BN(initialDepositB)
-      )
+    // Step 1: Initialize pool token for Token A
+    const txInitPoolTokenA = await program.methods
+      .initializePoolToken(userTokenAccountA)
       .accounts({
         pool: pool.publicKey,
-        userTokenA: userTokenAccountA,
-        userTokenB: userTokenAccountB,
-        poolTokenA: poolTokenAccountA,
-        poolTokenB: poolTokenAccountB,
         user: payer.publicKey,
-        // tokenProgram: TOKEN_PROGRAM_ID,
+        poolToken: poolTokenAccountA,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
       })
       .signers([payer])
       .rpc();
 
-    const latestBlockHash = await connection.getLatestBlockhash();
-
+    const initialBlockHashA = await connection.getLatestBlockhash();
     await connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-      signature: txinit,
+      blockhash: initialBlockHashA.blockhash,
+      lastValidBlockHeight: initialBlockHashA.lastValidBlockHeight,
+      signature: txInitPoolTokenA,
     });
 
-    const poolTokenAccountDataAinit = await connection.getTokenAccountBalance(
-      poolTokenAccountA
-    );
-    const poolTokenAccountDataBinit = await connection.getTokenAccountBalance(
-      poolTokenAccountB
-    );
-    const userTokenAccountDataAinit = await connection.getTokenAccountBalance(
-      userTokenAccountA
-    );
-    const userTokenAccountDataBinit = await connection.getTokenAccountBalance(
-      userTokenAccountB
-    );
-
-    console.log("INIT User Token Account A Data:", userTokenAccountDataAinit);
-    console.log("INIT User Token Account B Data:", userTokenAccountDataBinit);
-    console.log("INIT Pool Token Account A Data:", poolTokenAccountDataAinit);
-    console.log("INIT Pool Token Account B Data:", poolTokenAccountDataBinit);
-
-    const removeAmountA = 100;
-    const removeAmountB = 150;
-
-    const tx = await program.methods
-      .removeLiquidity(
-        new anchor.BN(removeAmountA),
-        new anchor.BN(removeAmountB)
-      )
+    // Step 2: Initialize pool token for Token B
+    const txInitPoolTokenB = await program.methods
+      .initializePoolToken(userTokenAccountB)
       .accounts({
         pool: pool.publicKey,
-        userTokenA: userTokenAccountA,
-        userTokenB: userTokenAccountB,
-        poolTokenA: poolTokenAccountA,
-        poolTokenB: poolTokenAccountB,
-        user: pool.publicKey,
-        // tokenProgram: TOKEN_PROGRAM_ID,
+        user: payer.publicKey,
+        poolToken: poolTokenAccountB,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
       })
-      .signers([pool])
+      .signers([payer])
       .rpc();
 
-    const latestBlockHashnew = await connection.getLatestBlockhash();
-
+    const initialBlockHashB = await connection.getLatestBlockhash();
     await connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHashnew.lastValidBlockHeight,
-      signature: tx,
+      blockhash: initialBlockHashB.blockhash,
+      lastValidBlockHeight: initialBlockHashB.lastValidBlockHeight,
+      signature: txInitPoolTokenB,
     });
 
-    // Fetch and log token account data
-    const poolAccount = await program.account.pool.fetch(pool.publicKey);
-    const userTokenAccountDataA = await connection.getTokenAccountBalance(
-      userTokenAccountA
-    );
-    const userTokenAccountDataB = await connection.getTokenAccountBalance(
-      userTokenAccountB
-    );
+    const tokenDepositA = 700;
+    const tokenDepositB = 500;
+
+    // First, deposit some liquidity to TokenA
+    const txA = await program.methods
+      .addLiquidity(userTokenAccountA, new anchor.BN(tokenDepositA))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountA, // User's TokenA account
+        poolToken: poolTokenAccountA, // Pool's TokenA account
+        user: payer.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([payer])
+      .rpc();
+
+    const latestBlockHashA = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashA.blockhash,
+      lastValidBlockHeight: latestBlockHashA.lastValidBlockHeight,
+      signature: txA,
+    });
+
+    // Then, deposit liquidity to TokenB
+    const txB = await program.methods
+      .addLiquidity(userTokenAccountB, new anchor.BN(tokenDepositB))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountB, // User's TokenB account
+        poolToken: poolTokenAccountB, // Pool's TokenB account
+        user: payer.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([payer])
+      .rpc();
+
+    const latestBlockHashB = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashB.blockhash,
+      lastValidBlockHeight: latestBlockHashB.lastValidBlockHeight,
+      signature: txB,
+    });
+
+    // Fetch account balances after adding liquidity for both tokens
     const poolTokenAccountDataA = await connection.getTokenAccountBalance(
       poolTokenAccountA
     );
     const poolTokenAccountDataB = await connection.getTokenAccountBalance(
       poolTokenAccountB
     );
+    const userTokenAccountDataA = await connection.getTokenAccountBalance(
+      userTokenAccountA
+    );
+    const userTokenAccountDataB = await connection.getTokenAccountBalance(
+      userTokenAccountB
+    );
 
-    console.log("Transaction Signature:", tx);
-    console.log("Pool Account Data:", poolAccount);
     console.log("User Token Account A Data:", userTokenAccountDataA);
     console.log("User Token Account B Data:", userTokenAccountDataB);
     console.log("Pool Token Account A Data:", poolTokenAccountDataA);
     console.log("Pool Token Account B Data:", poolTokenAccountDataB);
 
-    // Add assertions
-    expect(poolAccount.tokenAAmount.toNumber()).to.equal(initialDepositA);
-    expect(poolAccount.tokenBAmount.toNumber()).to.equal(initialDepositB);
+    // Now remove liquidity from TokenA and TokenB
+    const removeAmountA = 200;
+    const removeAmountB = 100;
 
-    expect(Number(userTokenAccountDataA.value.amount)).to.equal(
-      1000 - initialDepositA + removeAmountA
+    // Remove liquidity from TokenA
+    const txRemoveA = await program.methods
+      .removeLiquidity(userTokenAccountA, new anchor.BN(removeAmountA))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountA, // User's TokenA account
+        poolToken: poolTokenAccountA, // Pool's TokenA account
+        user: pool.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([pool])
+      .rpc();
+
+    const latestBlockHashRemoveA = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashRemoveA.blockhash,
+      lastValidBlockHeight: latestBlockHashRemoveA.lastValidBlockHeight,
+      signature: txRemoveA,
+    });
+
+    // Remove liquidity from TokenB
+    const txRemoveB = await program.methods
+      .removeLiquidity(userTokenAccountB, new anchor.BN(removeAmountB))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountB, // User's TokenB account
+        poolToken: poolTokenAccountB, // Pool's TokenB account
+        user: pool.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([pool])
+      .rpc();
+
+    const latestBlockHashRemoveB = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashRemoveB.blockhash,
+      lastValidBlockHeight: latestBlockHashRemoveB.lastValidBlockHeight,
+      signature: txRemoveB,
+    });
+
+    // Fetch balances after removing liquidity
+    const poolTokenAccountDataAfterA = await connection.getTokenAccountBalance(
+      poolTokenAccountA
     );
-    expect(Number(userTokenAccountDataB.value.amount)).to.equal(
-      1000 - initialDepositB + removeAmountB
+    const poolTokenAccountDataAfterB = await connection.getTokenAccountBalance(
+      poolTokenAccountB
     );
-    expect(Number(poolTokenAccountDataA.value.amount)).to.equal(
-      initialDepositA - removeAmountA
+    const userTokenAccountDataAfterA = await connection.getTokenAccountBalance(
+      userTokenAccountA
     );
-    expect(Number(poolTokenAccountDataB.value.amount)).to.equal(
-      initialDepositB - removeAmountB
+    const userTokenAccountDataAfterB = await connection.getTokenAccountBalance(
+      userTokenAccountB
+    );
+
+    console.log("AFTER User Token Account A Data:", userTokenAccountDataAfterA);
+    console.log("AFTER User Token Account B Data:", userTokenAccountDataAfterB);
+    console.log("AFTER Pool Token Account A Data:", poolTokenAccountDataAfterA);
+    console.log("AFTER Pool Token Account B Data:", poolTokenAccountDataAfterB);
+
+    // Add assertions
+    const poolAccount = await program.account.pool.fetch(pool.publicKey);
+    console.log("Pool account data after deposit:", poolAccount);
+
+    const tokenAmountA = poolAccount.tokens.find(
+      (token) => token.tokenAccount.toString() === userTokenAccountA.toString()
+    )?.amount;
+
+    const tokenAmountB = poolAccount.tokens.find(
+      (token) => token.tokenAccount.toString() === userTokenAccountB.toString()
+    )?.amount;
+
+    expect(tokenAmountA?.toNumber()).to.equal(tokenDepositA - removeAmountA);
+    expect(tokenAmountB?.toNumber()).to.equal(tokenDepositB - removeAmountB);
+
+    expect(Number(userTokenAccountDataAfterA.value.amount)).to.equal(
+      1000 - tokenDepositA + removeAmountA
+    );
+    expect(Number(userTokenAccountDataAfterB.value.amount)).to.equal(
+      1000 - tokenDepositB + removeAmountB
+    );
+    expect(Number(poolTokenAccountDataAfterA.value.amount)).to.equal(
+      tokenDepositA - removeAmountA
+    );
+    expect(Number(poolTokenAccountDataAfterB.value.amount)).to.equal(
+      tokenDepositB - removeAmountB
     );
   });
 });
@@ -465,7 +565,7 @@ describe("solana_swap_swap_tokens", () => {
   const provider = program.provider as anchor.AnchorProvider;
   const connection = new Connection("http://localhost:8899", "confirmed");
 
-  // accounts
+  // Accounts
   let pool: Keypair;
   let admin: Keypair;
   let tokenMintA: PublicKey;
@@ -487,7 +587,6 @@ describe("solana_swap_swap_tokens", () => {
     );
 
     const latestBlockHash = await connection.getLatestBlockhash();
-
     await connection.confirmTransaction({
       blockhash: latestBlockHash.blockhash,
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -586,33 +685,85 @@ describe("solana_swap_swap_tokens", () => {
       .signers([pool])
       .rpc();
 
-    const initialDepositA = 500;
-    const initialDepositB = 500;
-
-    // Add liquidity to the pool
-    const txinit = await program.methods
-      .addLiquidity(
-        new anchor.BN(initialDepositA), // Amount of token A
-        new anchor.BN(initialDepositB) // Amount of token B
-      )
+    // Step 1: Initialize pool token for Token A
+    const txInitPoolTokenA = await program.methods
+      .initializePoolToken(userTokenAccountA)
       .accounts({
         pool: pool.publicKey,
-        userTokenA: userTokenAccountA,
-        userTokenB: userTokenAccountB,
-        poolTokenA: poolTokenAccountA,
-        poolTokenB: poolTokenAccountB,
         user: payer.publicKey,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        poolToken: poolTokenAccountA,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
       })
       .signers([payer])
       .rpc();
 
-    const latestBlockHashnew = await connection.getLatestBlockhash();
-
+    const initialBlockHashA = await connection.getLatestBlockhash();
     await connection.confirmTransaction({
-      blockhash: latestBlockHash.blockhash,
-      lastValidBlockHeight: latestBlockHashnew.lastValidBlockHeight,
-      signature: txinit,
+      blockhash: initialBlockHashA.blockhash,
+      lastValidBlockHeight: initialBlockHashA.lastValidBlockHeight,
+      signature: txInitPoolTokenA,
+    });
+
+    // Step 2: Initialize pool token for Token B
+    const txInitPoolTokenB = await program.methods
+      .initializePoolToken(userTokenAccountB)
+      .accounts({
+        pool: pool.publicKey,
+        user: payer.publicKey,
+        poolToken: poolTokenAccountB,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([payer])
+      .rpc();
+
+    const initialBlockHashB = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: initialBlockHashB.blockhash,
+      lastValidBlockHeight: initialBlockHashB.lastValidBlockHeight,
+      signature: txInitPoolTokenB,
+    });
+
+    const tokenDepositA = 500;
+    const tokenDepositB = 500;
+
+    // First, deposit some liquidity to TokenA
+    const txA = await program.methods
+      .addLiquidity(userTokenAccountA, new anchor.BN(tokenDepositA))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountA, // User's TokenA account
+        poolToken: poolTokenAccountA, // Pool's TokenA account
+        user: payer.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([payer])
+      .rpc();
+
+    const latestBlockHashA = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashA.blockhash,
+      lastValidBlockHeight: latestBlockHashA.lastValidBlockHeight,
+      signature: txA,
+    });
+
+    // Then, deposit liquidity to TokenB
+    const txB = await program.methods
+      .addLiquidity(userTokenAccountB, new anchor.BN(tokenDepositB))
+      .accounts({
+        pool: pool.publicKey,
+        userToken: userTokenAccountB, // User's TokenB account
+        poolToken: poolTokenAccountB, // Pool's TokenB account
+        user: payer.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID, // Token program ID
+      })
+      .signers([payer])
+      .rpc();
+
+    const latestBlockHashB = await connection.getLatestBlockhash();
+    await connection.confirmTransaction({
+      blockhash: latestBlockHashB.blockhash,
+      lastValidBlockHeight: latestBlockHashB.lastValidBlockHeight,
+      signature: txB,
     });
 
     const userTokenAccountDataA = await connection.getTokenAccountBalance(
@@ -653,10 +804,14 @@ describe("solana_swap_swap_tokens", () => {
   it("Swap tokens in the pool", async () => {
     const swapAmountIn = 50; // Amount of Token A to swap
     const minAmountOut = 454; // Minimum amount of Token B to receive
-
     // Perform the swap
     const tx = await program.methods
-      .swap(new anchor.BN(swapAmountIn), new anchor.BN(minAmountOut))
+      .swap(
+        userTokenAccountA, // Input token account (Token A)
+        userTokenAccountB, // Output token account (Token B)
+        new anchor.BN(swapAmountIn), // Amount of Token A to swap
+        new anchor.BN(minAmountOut) // Minimum amount of Token B to receive
+      )
       .accounts({
         pool: pool.publicKey,
         poolAuthority: pool.publicKey,
@@ -670,15 +825,12 @@ describe("solana_swap_swap_tokens", () => {
       })
       .signers([payer, pool])
       .rpc();
-
     const latestBlockHash = await connection.getLatestBlockhash();
-
     await connection.confirmTransaction({
       blockhash: latestBlockHash.blockhash,
       lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
       signature: tx,
     });
-
     // Verify balances
     const userTokenAccountDataA = await connection.getTokenAccountBalance(
       userTokenAccountA
@@ -695,19 +847,16 @@ describe("solana_swap_swap_tokens", () => {
     const adminTokenAccountData = await connection.getTokenAccountBalance(
       adminTokenAccount
     );
-
     console.log("User Token Account A Data:", userTokenAccountDataA);
     console.log("User Token Account B Data:", userTokenAccountDataB);
     console.log("Pool Token Account A Data:", poolTokenAccountDataA);
     console.log("Pool Token Account B Data:", poolTokenAccountDataB);
     console.log("Admin Token Account Data:", adminTokenAccountData);
-
     const expectedUserTokenAAfterSwap = (1000 - 500 - swapAmountIn).toString();
     const expectedUserTokenBAfterSwap = (1000 - 500 + minAmountOut).toString();
     const expectedPoolTokenAAfterSwap = (500 + swapAmountIn).toString();
     const expectedPoolTokenBAfterSwap = (500 - minAmountOut).toString();
     const expectedAdminAccountAfterSwap = (0).toString();
-
     expect(userTokenAccountDataA.value.amount).to.equal(
       expectedUserTokenAAfterSwap,
       "User Token Account A balance after swap is incorrect"

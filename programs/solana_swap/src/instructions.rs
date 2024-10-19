@@ -1,6 +1,7 @@
 use crate::curve::calculate_swap_amount;
 use crate::errors::SwapError;
 use crate::state::Pool;
+use crate::state::TokenAmount;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount};
 
@@ -24,43 +25,86 @@ pub struct Deposit<'info> {
     #[account(mut)]
     pub pool: Account<'info, Pool>,
     #[account(mut)]
-    pub user_token_a: Account<'info, TokenAccount>,
+    pub user_token: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub user_token_b: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_a: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_b: Account<'info, TokenAccount>,
+    pub pool_token: Account<'info, TokenAccount>,
     #[account(mut)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
-pub fn deposit(ctx: Context<Deposit>, amount_a: u64, amount_b: u64) -> Result<()> {
+pub fn deposit(ctx: Context<Deposit>, token_account: Pubkey, amount: u64) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
-    let cpi_program = ctx.accounts.token_program.to_account_info(); // Clone the CPI program
+    let cpi_program = ctx.accounts.token_program.to_account_info();
 
-    // Transfer tokens from user to pool for token A
-    let cpi_accounts_a = token::Transfer {
-        from: ctx.accounts.user_token_a.to_account_info(),
-        to: ctx.accounts.pool_token_a.to_account_info(),
+    // Ensure the user is depositing to the correct token account
+    require!(
+        ctx.accounts.user_token.key() == token_account,
+        SwapError::InvalidAmount
+    );
+
+    // Transfer tokens from user to pool
+    let cpi_accounts = token::Transfer {
+        from: ctx.accounts.user_token.to_account_info(),
+        to: ctx.accounts.pool_token.to_account_info(),
         authority: ctx.accounts.user.to_account_info(),
     };
-    let cpi_ctx_a = CpiContext::new(cpi_program.clone(), cpi_accounts_a); // Use the cloned CPI program
-    token::transfer(cpi_ctx_a, amount_a)?;
+    let cpi_ctx = CpiContext::new(cpi_program.clone(), cpi_accounts);
+    token::transfer(cpi_ctx, amount)?;
 
-    // Transfer tokens from user to pool for token B
-    let cpi_accounts_b = token::Transfer {
-        from: ctx.accounts.user_token_b.to_account_info(),
-        to: ctx.accounts.pool_token_b.to_account_info(),
-        authority: ctx.accounts.user.to_account_info(),
-    };
-    let cpi_ctx_b = CpiContext::new(cpi_program.clone(), cpi_accounts_b); // Use the cloned CPI program
-    token::transfer(cpi_ctx_b, amount_b)?;
+    // Update pool state for the deposited token
+    let mut found = false;
 
-    // Update pool state
-    pool.token_a_amount += amount_a;
-    pool.token_b_amount += amount_b;
+    // Check if the token is already in the pool's tokens vector
+    for token in &mut pool.tokens {
+        if token.token_account == token_account {
+            token.amount += amount;
+            found = true;
+            break;
+        }
+    }
+
+    // If not found, add the new token to the pool's tokens vector
+    if !found {
+        pool.tokens.push(TokenAmount {
+            token_account,
+            amount,
+        });
+    }
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct InitializePoolToken<'info> {
+    #[account(mut)]
+    pub pool: Account<'info, Pool>,
+    #[account(mut)]
+    pub pool_token: Account<'info, TokenAccount>,
+    pub user: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
+pub fn initialize_pool_token(
+    ctx: Context<InitializePoolToken>,
+    token_account: Pubkey,
+) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+
+    // Initialize the token in the pool if it's not already added
+    if pool
+        .tokens
+        .iter()
+        .any(|token| token.token_account == token_account)
+    {
+        return Err(SwapError::TokenAlreadyInitialized.into());
+    }
+
+    // Add the token account to the pool with an initial amount of 0
+    pool.tokens.push(TokenAmount {
+        token_account,
+        amount: 0,
+    });
 
     Ok(())
 }
@@ -70,48 +114,40 @@ pub struct AddLiquidity<'info> {
     #[account(mut)]
     pub pool: Account<'info, Pool>,
     #[account(mut)]
-    pub user_token_a: Account<'info, TokenAccount>,
+    pub user_token: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub user_token_b: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_a: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_b: Account<'info, TokenAccount>,
+    pub pool_token: Account<'info, TokenAccount>,
     #[account(mut)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
-pub fn add_liquidity(ctx: Context<AddLiquidity>, amount_a: u64, amount_b: u64) -> Result<()> {
+pub fn add_liquidity(ctx: Context<AddLiquidity>, token_account: Pubkey, amount: u64) -> Result<()> {
+    let authority = ctx.accounts.user.to_account_info();
     let pool = &mut ctx.accounts.pool;
 
-    // Transfer tokens from user to pool for token A
-    let cpi_accounts_a = token::Transfer {
-        from: ctx.accounts.user_token_a.to_account_info(),
-        to: ctx.accounts.pool_token_a.to_account_info(),
-        authority: ctx.accounts.user.to_account_info(),
+    // Transfer tokens from user to pool for the provided token
+    let cpi_accounts = token::Transfer {
+        from: ctx.accounts.user_token.to_account_info(),
+        to: ctx.accounts.pool_token.to_account_info(),
+        authority: authority,
     };
-    let cpi_ctx_a = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_a);
-    token::transfer(cpi_ctx_a, amount_a)?;
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    token::transfer(cpi_ctx, amount)?;
 
-    // Transfer tokens from user to pool for token B
-    let cpi_accounts_b = token::Transfer {
-        from: ctx.accounts.user_token_b.to_account_info(),
-        to: ctx.accounts.pool_token_b.to_account_info(),
-        authority: ctx.accounts.user.to_account_info(),
-    };
-    let cpi_ctx_b = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_b);
-    token::transfer(cpi_ctx_b, amount_b)?;
-
-    // Update pool state
-    pool.token_a_amount = pool
-        .token_a_amount
-        .checked_add(amount_a)
-        .ok_or(SwapError::MathError)?;
-    pool.token_b_amount = pool
-        .token_b_amount
-        .checked_add(amount_b)
-        .ok_or(SwapError::MathError)?;
+    // Update the corresponding token's amount in the pool
+    if let Some(pool_token) = pool
+        .tokens
+        .iter_mut()
+        .find(|token| token.token_account == token_account)
+    {
+        pool_token.amount = pool_token
+            .amount
+            .checked_add(amount)
+            .ok_or(SwapError::MathError)?;
+    } else {
+        return Err(SwapError::TokenNotFound.into()); // Handle token not found in pool
+    }
 
     Ok(())
 }
@@ -121,54 +157,50 @@ pub struct RemoveLiquidity<'info> {
     #[account(mut)]
     pub pool: Account<'info, Pool>,
     #[account(mut)]
-    pub user_token_a: Account<'info, TokenAccount>,
+    pub user_token: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub user_token_b: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_a: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub pool_token_b: Account<'info, TokenAccount>,
+    pub pool_token: Account<'info, TokenAccount>,
     #[account(mut)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
-pub fn remove_liquidity(ctx: Context<RemoveLiquidity>, amount_a: u64, amount_b: u64) -> Result<()> {
-    let pool = &mut ctx.accounts.pool.clone();
+pub fn remove_liquidity(
+    ctx: Context<RemoveLiquidity>,
+    token_account: Pubkey,
+    amount: u64,
+) -> Result<()> {
+    let authority = ctx.accounts.pool.to_account_info();
+    let pool = &mut ctx.accounts.pool;
 
-    // Validate that the pool has enough liquidity to remove
-    require!(
-        pool.token_a_amount >= amount_a && pool.token_b_amount >= amount_b,
-        SwapError::InsufficientLiquidity
-    );
+    // Find the token in the pool and validate if there is enough liquidity
+    if let Some(pool_token) = pool
+        .tokens
+        .iter_mut()
+        .find(|token| token.token_account == token_account)
+    {
+        require!(
+            pool_token.amount >= amount,
+            SwapError::InsufficientLiquidity
+        );
 
-    // Transfer tokens from the pool to the user for Token A
-    let cpi_accounts_a = token::Transfer {
-        from: ctx.accounts.pool_token_a.to_account_info(),
-        to: ctx.accounts.user_token_a.to_account_info(),
-        authority: ctx.accounts.pool.to_account_info(), // Authority here is the pool
-    };
-    let cpi_ctx_a = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_a);
-    token::transfer(cpi_ctx_a, amount_a)?;
+        // Transfer tokens from the pool to the user for the given token
+        let cpi_accounts = token::Transfer {
+            from: ctx.accounts.pool_token.to_account_info(),
+            to: ctx.accounts.user_token.to_account_info(),
+            authority: authority,
+        };
+        let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+        token::transfer(cpi_ctx, amount)?;
 
-    // Transfer tokens from the pool to the user for Token B
-    let cpi_accounts_b = token::Transfer {
-        from: ctx.accounts.pool_token_b.to_account_info(),
-        to: ctx.accounts.user_token_b.to_account_info(),
-        authority: ctx.accounts.pool.to_account_info(), // Authority here is the pool
-    };
-    let cpi_ctx_b = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_b);
-    token::transfer(cpi_ctx_b, amount_b)?;
-
-    // Update pool state
-    pool.token_a_amount = pool
-        .token_a_amount
-        .checked_sub(amount_a)
-        .ok_or(SwapError::MathError)?;
-    pool.token_b_amount = pool
-        .token_b_amount
-        .checked_sub(amount_b)
-        .ok_or(SwapError::MathError)?;
+        // Update pool state for the token
+        pool_token.amount = pool_token
+            .amount
+            .checked_sub(amount)
+            .ok_or(SwapError::MathError)?;
+    } else {
+        return Err(SwapError::TokenNotFound.into()); // Handle token not found in pool
+    }
 
     Ok(())
 }
@@ -194,31 +226,63 @@ pub struct Swap<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<()> {
-    let pool = &mut ctx.accounts.pool; // No need to clone, use pool directly
+pub fn swap(
+    ctx: Context<Swap>,
+    input_token_account: Pubkey,
+    output_token_account: Pubkey,
+    input_amount: u64,
+    min_output_amount: u64,
+) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
 
     // Validate input amounts
-    require!(amount_in > 0, SwapError::InvalidAmount);
-    require!(min_amount_out > 0, SwapError::InvalidAmount);
+    require!(input_amount > 0, SwapError::InvalidAmount);
+    require!(min_output_amount > 0, SwapError::InvalidAmount);
+
+    // Find the input and output tokens in the pool using input_token_account and output_token_account
+    let (pool_token_in, pool_token_out) = {
+        let mut in_token = None;
+        let mut out_token = None;
+
+        // Iterate through pool tokens to find both input and output tokens
+        for token in pool.tokens.iter_mut() {
+            let selected_token = token.token_account;
+
+            if selected_token == input_token_account {
+                in_token = Some(token);
+            } else if selected_token == output_token_account {
+                out_token = Some(token);
+            }
+            // Break early if both tokens are found
+            if in_token.is_some() && out_token.is_some() {
+                break;
+            }
+        }
+
+        let in_token = in_token.ok_or(SwapError::TokenNotFound)?;
+        let out_token = out_token.ok_or(SwapError::TokenNotFound)?;
+
+        (in_token, out_token)
+    };
 
     // Calculate the output amount based on the pool’s reserves and input amount
     let (output_amount, fee_amount) =
-        calculate_swap_amount(amount_in, pool.token_a_amount, pool.token_b_amount)?;
+        calculate_swap_amount(input_amount, pool_token_in.amount, pool_token_out.amount)?;
 
-    // Ensure that the calculated output amount meets the minimum amount out requirement
-    require!(output_amount >= min_amount_out, SwapError::SlippageError);
+    // Ensure the output amount meets the minimum output amount requirement
+    require!(output_amount >= min_output_amount, SwapError::SlippageError);
 
     // Validate pool liquidity
     require!(
-        pool.token_a_amount >= amount_in,
+        pool_token_in.amount >= input_amount,
         SwapError::InsufficientLiquidity
     );
     require!(
-        pool.token_b_amount >= output_amount,
+        pool_token_out.amount >= output_amount,
         SwapError::InsufficientLiquidity
     );
 
-    // Transfer the fee to the admin account
+    // Transfer fee to the admin account
     let cpi_accounts_fee = token::Transfer {
         from: ctx.accounts.user_token_in.to_account_info(),
         to: ctx.accounts.admin_token_account.to_account_info(),
@@ -240,7 +304,7 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
         ctx.accounts.token_program.to_account_info(),
         cpi_accounts_in,
     );
-    token::transfer(cpi_ctx_in, amount_in - fee_amount)?;
+    token::transfer(cpi_ctx_in, input_amount - fee_amount)?;
 
     // Transfer tokens from pool to user (pool_authority must authorize this)
     let cpi_accounts_out = token::Transfer {
@@ -254,15 +318,15 @@ pub fn swap(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Result<(
     );
     token::transfer(cpi_ctx_out, output_amount)?;
 
-    // Update pool state
-    pool.token_a_amount = pool
-        .token_a_amount
-        .checked_add(amount_in)
+    // Update the pool state
+    pool_token_in.amount = pool_token_in
+        .amount
+        .checked_add(input_amount)
         .ok_or(SwapError::MathError)?
         .checked_sub(fee_amount)
         .ok_or(SwapError::MathError)?;
-    pool.token_b_amount = pool
-        .token_b_amount
+    pool_token_out.amount = pool_token_out
+        .amount
         .checked_sub(output_amount)
         .ok_or(SwapError::MathError)?;
 

@@ -8,10 +8,10 @@ skip-lint = false
 solana_swap = "EkXczcYjaVcmNEUeoKAvK8aNYvSfkAAdLTKYNaLTzCM7"
 
 [registry]
-url = "https://api.apr.dev"
+url = "https://api.testnet.solana.com"
 
 [provider]
-cluster = "Devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

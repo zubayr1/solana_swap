@@ -17,23 +17,46 @@ pub mod solana_swap {
         instructions::initialize_pool(ctx)
     }
 
-    pub fn deposit(ctx: Context<Deposit>, amount_a: u64, amount_b: u64) -> Result<()> {
-        instructions::deposit(ctx, amount_a, amount_b)
+    pub fn deposit(ctx: Context<Deposit>, token_account: Pubkey, amount: u64) -> Result<()> {
+        instructions::deposit(ctx, token_account, amount)
     }
 
-    pub fn add_liquidity(ctx: Context<AddLiquidity>, amount_a: u64, amount_b: u64) -> Result<()> {
-        instructions::add_liquidity(ctx, amount_a, amount_b)
+    pub fn initialize_pool_token(
+        ctx: Context<InitializePoolToken>,
+        token_account: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_pool_token(ctx, token_account)
+    }
+
+    pub fn add_liquidity(
+        ctx: Context<AddLiquidity>,
+        token_account: Pubkey,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::add_liquidity(ctx, token_account, amount)
     }
 
     pub fn remove_liquidity(
         ctx: Context<RemoveLiquidity>,
-        amount_a: u64,
-        amount_b: u64,
+        token_account: Pubkey,
+        amount: u64,
     ) -> Result<()> {
-        instructions::remove_liquidity(ctx, amount_a, amount_b)
+        instructions::remove_liquidity(ctx, token_account, amount)
     }
 
-    pub fn swap(ctx: Context<Swap>, input_amount: u64, min_output_amount: u64) -> Result<()> {
-        instructions::swap(ctx, input_amount, min_output_amount)
+    pub fn swap(
+        ctx: Context<Swap>,
+        input_token_account: Pubkey,
+        output_token_account: Pubkey,
+        input_amount: u64,
+        min_output_amount: u64,
+    ) -> Result<()> {
+        instructions::swap(
+            ctx,
+            input_token_account,
+            output_token_account,
+            input_amount,
+            min_output_amount,
+        )
     }
 }

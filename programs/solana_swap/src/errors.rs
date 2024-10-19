@@ -1,5 +1,3 @@
-// errors.rs
-
 use anchor_lang::prelude::*;
 
 #[error_code]
@@ -15,6 +13,13 @@ pub enum SwapError {
 
     #[msg("Slippage error.")]
     SlippageError,
+
     #[msg("Invalid amount.")]
     InvalidAmount,
+
+    #[msg("Token invalid.")]
+    TokenNotFound,
+
+    #[msg("Token already initialized.")]
+    TokenAlreadyInitialized,
 }

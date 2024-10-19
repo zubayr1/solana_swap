@@ -1,0 +1,84 @@
+solana config set --url https://api.devnet.solana.com
+
+solana config get
+
+solana airdrop 2
+
+solana balance
+
+
+### Create Token Mints (SPL Tokens) Token A
+spl-token create-token
+Creating token 3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N under program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+
+Address:  3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N
+Decimals:  9
+
+----------------------------------------------------
+### Create Token Mints (SPL Tokens) Token B
+spl-token create-token
+Creating token 8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ under program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+
+Address:  8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ
+Decimals:  9
+
+----------------------------------------------------
+### Create Token Accounts for User:
+
+token account for Token A for the user:
+
+spl-token create-account <token_a_mint_address>
+spl-token create-account 3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N
+Creating account A7T1xh4iWTGa43hZzQr32dEh9FSHyDbXvi486UpfQB4s
+
+Signature: 3Gc3d8j8w9K31XtFb2eZMK4Zd5rAB48wHwhWsgAwmEwmWUcF14mDKCdJ9G6AXa24pa2GKjrNDw1wnUwf7cUJw2pZ
+
+---------------------------------------
+token account for Token B for the user:
+spl-token create-account <token_b_mint_address>
+spl-token create-account 8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ
+Creating account 5NsAP3bfuRSWSQ599CNy1tdtu1mn74BKfJ3DwJ4Hwb3F
+
+Signature: UmWteg1afoYAjNtFNLhCE9BX3XfwwiuPU2kQGJHTXKysTworLtTuGd2J2PkrQnRGAhtfRaaiaKibma95pEvNz3P
+
+
+----------------------------------------------------
+### Create Token Accounts for Pool:
+
+token account for Token A for Pool:
+spl-token create-account <token_a_mint_address> --owner pool-keypair.json
+spl-token create-account 3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N --owner pool-keypair.json
+Creating account DnTkW1CeJ4w7sDqJBJsjTS36Qd6uF15yZfeVeaXZ4a3P
+
+Signature: 3q4sFqxxzvWkDJGUsTBUtxwFMgRWh5wRuHqrqdJYYeZEEFWnjbJxs7qrS6tnxYqCGTCTHtPGExm9jNC3gdcdLBER
+
+---------------------------------------
+token account for Token B for Pool:
+spl-token create-account <token_b_mint_address> --owner pool-keypair.json
+spl-token create-account 8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ --owner pool-keypair.json
+Creating account 46qHaVjVvzHDDRh4M94W5xGgP4ikRft9YdLbDZyWSCt2
+
+Signature: ohfMp2R1ggpmrMqR8FgoEH57GTke5WjPU1MYqZJmrVLHLx74syKDRM6AsYjvENUagtixJE6XTBwFBkvaqsxa2Gb
+
+
+----------------------------------------------------
+### Mint tokens to the user's Token A account
+spl-token mint <token_a_mint_address> <amount> <user_token_a_account>
+spl-token mint 3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N 1000 A7T1xh4iWTGa43hZzQr32dEh9FSHyDbXvi486UpfQB4s
+Minting 1000 tokens
+  Token: 3dshENKZoafvFge52jBJBcvcSK3jLbgvGLJx4SaL5V1N
+  Recipient: A7T1xh4iWTGa43hZzQr32dEh9FSHyDbXvi486UpfQB4s
+
+Signature: 3RYpPbgrmwWHAAWdF8MLJaxyTKrZVYU52FesThofhBkMJARTYyjgnqnGKGqSKHTsEVL2pdb8dM7G47bKgM2mbe3o
+
+
+----------------------------------------------------
+### Mint tokens to the user's Token B account
+spl-token mint <token_b_mint_address> <amount> <user_token_b_account>
+spl-token mint 8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ 1000 5NsAP3bfuRSWSQ599CNy1tdtu1mn74BKfJ3DwJ4Hwb3F
+Minting 1000 tokens
+  Token: 8viRynPkoSVvFiurnRKWhduNVtMevb8QTZ7KbW17yHHZ
+  Recipient: 5NsAP3bfuRSWSQ599CNy1tdtu1mn74BKfJ3DwJ4Hwb3F
+
+Signature: 5BLe8hnoDQNaK1DeHpTAomy3kbAtfuHGcVAANuE7gGnb2rcr2XAdtCu9nrF7FCWJnVi1xLuRjTnaDNMdnh7meZSN
+
