@@ -6,6 +6,10 @@ import {
   getOrCreateAssociatedTokenAccount,
   mintTo,
   TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountIdempotentInstruction,
+  NATIVE_MINT,
+  createCloseAccountInstruction,
 } from "@solana/spl-token";
 import { expect } from "chai";
 import {
@@ -13,6 +17,10 @@ import {
   Keypair,
   PublicKey,
   LAMPORTS_PER_SOL,
+  SystemProgram,
+  Transaction,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
+  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 
 // Configure the client to use the local cluster.
@@ -1093,5 +1101,98 @@ describe("solana_swap_swap_tokens", () => {
       expectedAdminAccountAfterSwap,
       "Admin Token Account balance after swap is incorrect"
     );
+  });
+});
+
+const WALLET_RENT_EXEMPT_MINIMUM = 890_880;
+const LAMPORTS_PER_SIGNATURE = 5000;
+const TOKEN_ACCOUNT_LAMPORTS = 2_039_280;
+
+describe("flash-fill", () => {
+  // Configure the client to use the local cluster.
+  anchor.setProvider(anchor.AnchorProvider.env());
+  const provider = anchor.getProvider();
+  const program = anchor.workspace.SolanaSwap as Program<SolanaSwap>;
+  const borrower = new Keypair();
+  const connection = provider.connection;
+  const programAuthority = PublicKey.findProgramAddressSync(
+    [Buffer.from("authority")],
+    program.programId
+  )[0];
+
+  it("is working", async () => {
+    const transferToProgramAuthorityInstruction = SystemProgram.transfer({
+      fromPubkey: provider.publicKey,
+      toPubkey: programAuthority,
+      lamports: TOKEN_ACCOUNT_LAMPORTS + WALLET_RENT_EXEMPT_MINIMUM, // Enough to cover 2 transactions.
+    });
+
+    const transferToBorrowerInstruction = SystemProgram.transfer({
+      fromPubkey: provider.publicKey,
+      toPubkey: borrower.publicKey,
+      lamports: LAMPORTS_PER_SIGNATURE * 4 + WALLET_RENT_EXEMPT_MINIMUM, // Enough to cover 2 transactions.
+    });
+
+    await provider.sendAndConfirm(
+      new Transaction().add(
+        transferToProgramAuthorityInstruction,
+        transferToBorrowerInstruction
+      )
+    );
+
+    const borrowIx = await program.methods
+      .borrow()
+      .accountsStrict({
+        borrower: borrower.publicKey,
+        programAuthority,
+        instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const wSOLAccountAddress = await getAssociatedTokenAddress(
+      NATIVE_MINT,
+      borrower.publicKey
+    );
+
+    const createWSOLAccountIx =
+      createAssociatedTokenAccountIdempotentInstruction(
+        borrower.publicKey,
+        wSOLAccountAddress,
+        borrower.publicKey,
+        NATIVE_MINT
+      );
+
+    const closeWSOLAccountIx = createCloseAccountInstruction(
+      wSOLAccountAddress,
+      borrower.publicKey,
+      borrower.publicKey
+    );
+
+    const repayIx = await program.methods
+      .repay()
+      .accountsStrict({
+        borrower: borrower.publicKey,
+        programAuthority,
+        instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const tx = new Transaction().add(
+      borrowIx,
+      createWSOLAccountIx,
+      closeWSOLAccountIx,
+      repayIx
+    );
+
+    let success = true;
+    try {
+      await sendAndConfirmTransaction(connection, tx, [borrower]);
+    } catch (e) {
+      console.log(e);
+      success = false;
+    }
+    expect(success).to.be.true;
   });
 });

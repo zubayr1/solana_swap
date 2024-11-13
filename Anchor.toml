@@ -5,13 +5,13 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-solana_swap = "EkXczcYjaVcmNEUeoKAvK8aNYvSfkAAdLTKYNaLTzCM7"
+solana_swap = "7aEi72qNaX16AJBDhgsmsPvyXuMKCXea9qRA2jVL6Hjg"
 
 [registry]
 url = "https://api.testnet.solana.com"
 
 [provider]
-cluster = "localnet"
+cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
